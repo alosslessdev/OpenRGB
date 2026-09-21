@@ -80,6 +80,7 @@ public:
     void            ReadFirmwareInfo();
     void            SetLEDsDirect(std::vector<RGBColor> colors);
 private:
+    void            SetK668DirectMode();
     hid_device*     dev_cmd;
     hid_device*     dev_data;
     device_type     type;
@@ -90,4 +91,5 @@ private:
     std::string     name;
     bool            k668_layout;
     bool            single_handle;
+    bool            k668_direct_mode;
 };

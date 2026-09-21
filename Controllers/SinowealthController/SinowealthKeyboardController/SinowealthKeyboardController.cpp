@@ -9,6 +9,8 @@
 \*-----------------------------------------=*/
 
 #include <cstring>
+#include <chrono>
+#include <thread>
 #include "SinowealthKeyboardController.h"
 #include "StringUtils.h"
 
@@ -100,6 +102,7 @@ SinowealthKeyboardController::SinowealthKeyboardController(hid_device* dev_cmd_h
 
     k668_layout     = false;
     single_handle   = false;
+    k668_direct_mode = false;
 }
 
 SinowealthKeyboardController::SinowealthKeyboardController(hid_device* dev_handle, std::string _path, std::string dev_name, bool _k668_layout)
@@ -117,6 +120,7 @@ SinowealthKeyboardController::SinowealthKeyboardController(hid_device* dev_handl
 
     k668_layout     = _k668_layout;
     single_handle   = true;
+    k668_direct_mode = false;
 }
 
 SinowealthKeyboardController::~SinowealthKeyboardController()
@@ -175,10 +179,95 @@ std::string SinowealthKeyboardController::GetSerialString()
     return(StringUtils::wstring_to_string(serial_string));
 }
 
+/*-------------------------------------------------------------------------------------------------*\
+| Redragon K668WBO-RGB: switch the board into its per-key ("custom") light mode.                    |
+|                                                                                                   |
+| On stock firmware the board boots into a hardware light effect.  While such an effect is active    |
+| the firmware repaints the LED buffer itself and simply ignores the host's report 0x08 per-key      |
+| frames.  Writing the vendor profile with light mode 0x15 (MODE_PER_KEY) switches the board to the  |
+| host-driven mode, after which report 0x08 frames are displayed.                                    |
+|                                                                                                   |
+| The profile is read back (report 0x05 cmd 0x83 addr 0xB6 followed by a report 0x06 get) and only   |
+| the light-mode byte is changed, so all of the user's other profile settings are preserved.         |
+| This is a lighting-only configuration write; it never touches report 0x06 opcode 0x04 (SetKey      |
+| Matrix), which stores key codes and would break typing.                                            |
+\*-------------------------------------------------------------------------------------------------*/
+void SinowealthKeyboardController::SetK668DirectMode()
+{
+    if(k668_direct_mode)
+    {
+        return;
+    }
+
+    const int buffer_size = 1032;
+
+    unsigned char profile[buffer_size];
+    memset(profile, 0x00, sizeof(profile));
+
+    /*-----------------------------------------------------*\
+    | Ask the board for its current profile                 |
+    \*-----------------------------------------------------*/
+    unsigned char cmd[6] = { 0x05, 0x83, 0xB6, 0x00, 0x00, 0x00 };
+    hid_send_feature_report(dev_data, cmd, sizeof(cmd));
+
+    profile[0] = 0x06;
+    int result = -1;
+
+    for(unsigned int attempt = 0; attempt < 6; attempt++)
+    {
+        result = hid_get_feature_report(dev_data, profile, buffer_size);
+
+        if((result >= 3) && (profile[1] == 0x83) && (profile[2] == 0xB6))
+        {
+            break;
+        }
+
+        memset(profile, 0x00, sizeof(profile));
+        profile[0] = 0x06;
+        result = -1;
+    }
+
+    if(result < 3)
+    {
+        /*-------------------------------------------------*\
+        | Could not read the profile back; fall back to the  |
+        | generic Sinowealth profile with the per-key light  |
+        | mode selected.                                     |
+        \*-------------------------------------------------*/
+        memset(profile, 0x00, sizeof(profile));
+        profile[0x00] = 0x06;
+        profile[0x01] = 0x03;
+        profile[0x02] = 0xB6;
+        profile[0x14] = 0x01;
+        profile[0x15] = MODE_PER_KEY;
+    }
+    else
+    {
+        profile[1] = 0x03;
+        profile[0x15] = MODE_PER_KEY;
+    }
+
+    hid_send_feature_report(dev_data, profile, buffer_size);
+
+    /*-----------------------------------------------------*\
+    | The firmware applies the mode change from its main    |
+    | loop; give it a moment before the report 0x08 frame   |
+    | is expected to be displayed.                          |
+    \*-----------------------------------------------------*/
+    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+
+    k668_direct_mode = true;
+}
+
 void SinowealthKeyboardController::SetLEDsDirect(std::vector<RGBColor> colors)
 {
     if(k668_layout)
     {
+        /*-------------------------------------------------*\
+        | Make sure the board is in its host-driven mode     |
+        \*-------------------------------------------------*/
+        SetK668DirectMode();
+
         /*-------------------------------------------------*\
         | Redragon K668WBO-RGB LED packet (report 0x08):     |
         |   [0]      = 0x08                                  |

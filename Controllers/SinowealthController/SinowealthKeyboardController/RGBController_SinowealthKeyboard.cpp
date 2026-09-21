@@ -137,7 +137,7 @@ static const char* k668_led_names[108] =
     "[", "]", "\\", "Delete", "End", "PgDn",
     "Num7", "Num8", "Num9", "Num+", "CapsLock", "A",
     "S", "D", "F", "G", "H", "J",
-    "K", "L", "L", "'", "Enter", "Num4",
+    "K", "L", ";", "'", "Enter", "Num4",
     "Num5", "Num6", "LShift", "Z", "X", "C",
     "V", "B", "N", "M", ",", ".",
     "/", "RShift", "Up", "Num1", "Num2", "Num3",
