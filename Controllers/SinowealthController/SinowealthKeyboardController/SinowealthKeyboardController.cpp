@@ -177,30 +177,28 @@ std::string SinowealthKeyboardController::GetSerialString()
 
 void SinowealthKeyboardController::SetLEDsDirect(std::vector<RGBColor> colors)
 {
-    const int buffer_size = 1032;
-
-    unsigned char buf[buffer_size];
-
-    /*-----------------------------------------------------*\
-    | Zero out buffer                                       |
-    \*-----------------------------------------------------*/
-    memset(buf, 0x00, sizeof(buf));
-
     if(k668_layout)
     {
-        unsigned int num_keys = sizeof(k668_keys_per_key_index) / sizeof(*k668_keys_per_key_index);
-
         /*-------------------------------------------------*\
-        | Redragon K668WBO-RGB direct packet:                |
-        |   [0]=report id 0x06                               |
-        |   [1]=opcode 0x04, [2]=KeyAddr 0xD4, [4]=0x40       |
-        |   per-key colour data at [8 + led*3] as B,G,R      |
+        | Redragon K668WBO-RGB LED packet (report 0x08):     |
+        |   [0]      = 0x08                                  |
+        |   [1..3]   = 0x0A 0x7A 0x01                        |
+        |   [4 + n]  = R,G,B triple for LED slot n           |
+        |                                                    |
+        | This is the board's normal LED feature report. It  |
+        | must NOT be confused with the vendor "key matrix"  |
+        | command (report 0x06, opcode 0x04), which stores   |
+        | key codes and will make the keyboard stop typing.  |
         \*-------------------------------------------------*/
-        buf[0x00] = 0x06;
-        buf[0x01] = 0x04;
-        buf[0x02] = 0xD4;
-        buf[0x03] = 0x00;
-        buf[0x04] = 0x40;
+        unsigned char k668_buf[382];
+        unsigned int  num_keys = sizeof(k668_keys_per_key_index) / sizeof(*k668_keys_per_key_index);
+
+        memset(k668_buf, 0x00, sizeof(k668_buf));
+
+        k668_buf[0] = 0x08;
+        k668_buf[1] = 0x0A;
+        k668_buf[2] = 0x7A;
+        k668_buf[3] = 0x01;
 
         if(colors.size() < num_keys)
         {
@@ -209,16 +207,25 @@ void SinowealthKeyboardController::SetLEDsDirect(std::vector<RGBColor> colors)
 
         for(unsigned int i = 0; i < num_keys; i++)
         {
-            unsigned int base = 8 + (k668_keys_per_key_index[i] * 3);
+            unsigned int base = 4 + (k668_keys_per_key_index[i] * 3);
 
-            buf[base + 0] = RGBGetBValue(colors[i]);
-            buf[base + 1] = RGBGetGValue(colors[i]);
-            buf[base + 2] = RGBGetRValue(colors[i]);
+            k668_buf[base + 0] = RGBGetRValue(colors[i]);
+            k668_buf[base + 1] = RGBGetGValue(colors[i]);
+            k668_buf[base + 2] = RGBGetBValue(colors[i]);
         }
 
-        hid_send_feature_report(dev_data, buf, sizeof(buf));
+        hid_send_feature_report(dev_data, k668_buf, sizeof(k668_buf));
         return;
     }
+
+    const int buffer_size = 1032;
+
+    unsigned char buf[buffer_size];
+
+    /*-----------------------------------------------------*\
+    | Zero out buffer                                       |
+    \*-----------------------------------------------------*/
+    memset(buf, 0x00, sizeof(buf));
 
     unsigned int num_keys = sizeof(tkl_keys_per_key_index) / sizeof(*tkl_keys_per_key_index);
 
@@ -295,6 +302,11 @@ void SinowealthKeyboardController::SetStaticColor(RGBColor* color_buf)
 
 void SinowealthKeyboardController::SetMode(unsigned char mode, unsigned char brightness, unsigned char speed, unsigned char color_mode)
 {
+    if(k668_layout)
+    {
+        return;
+    }
+
     const int buffer_size = 1032;
 
     int mode_byte_index = 0x15;

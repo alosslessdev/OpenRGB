@@ -439,6 +439,27 @@ RGBController_SinowealthKeyboard::RGBController_SinowealthKeyboard(SinowealthKey
     Perfect.colors.resize(1);
     modes.push_back(Perfect);
 
+    /*---------------------------------------------------------*\
+    | The K668WBO-RGB only has a verified-safe path for setting  |
+    | individual colours.  Its hardware-effect command is a      |
+    | vendor profile write that has not been validated, so it is |
+    | not offered, leaving Off, Static and per-key (Custom).     |
+    \*---------------------------------------------------------*/
+    if(controller->GetK668Layout())
+    {
+        std::vector<mode> safe_modes;
+
+        for(mode& current : modes)
+        {
+            if((current.value == MODE_OFF) || (current.value == MODE_STATIC) || (current.value == MODE_PER_KEY))
+            {
+                safe_modes.push_back(current);
+            }
+        }
+
+        modes = safe_modes;
+    }
+
     SetupZones();
 }
 
@@ -520,6 +541,24 @@ void RGBController_SinowealthKeyboard::DeviceUpdateSingleLED(int /*led*/)
 
 void RGBController_SinowealthKeyboard::DeviceUpdateMode()
 {
+    if(controller->GetK668Layout())
+    {
+        if(modes[active_mode].value == MODE_STATIC)
+        {
+            controller->SetStaticColor(&modes[active_mode].colors[0]);
+        }
+        else if(modes[active_mode].value == MODE_OFF)
+        {
+            std::vector<RGBColor> off_leds(controller->GetLEDCount(), 0x00000000);
+            controller->SetLEDsDirect(off_leds);
+        }
+        else
+        {
+            DeviceUpdateLEDs();
+        }
+        return;
+    }
+
     unsigned int brightness  = BRIGHTNESS_FULL;
     RGBColor* selected_color = (modes[active_mode].color_mode == MODE_COLORS_NONE) ? 0 : &modes[active_mode].colors[0];
 
