@@ -118,6 +118,44 @@ static const char *led_names_tkl[] =
     KEY_EN_RIGHT_ARROW,
 };
 
+/*---------------------------------------------------------------------*\
+| Redragon K668WBO-RGB (VID 0x258A / PID 0x0049) - 108 key full size    |
+| LED order matches k668_keys_per_key_index in the controller           |
+\*---------------------------------------------------------------------*/
+#define NA_ 0xFFFFFFFF
+
+static const char* k668_led_names[108] =
+{
+    "Esc", "F1", "F2", "F3", "F4", "F5",
+    "F6", "F7", "F8", "F9", "F10", "F11",
+    "F12", "PrtSc", "SrcLock", "Pause", "`", "1",
+    "2", "3", "4", "5", "6", "7",
+    "8", "9", "0", "-", "=", "Backspace",
+    "Insert", "Home", "PgUp", "NumLock", "Num /", "Num*",
+    "Num-", "Tab", "Q", "W", "E", "R",
+    "T", "Y", "U", "I", "O", "P",
+    "[", "]", "\\", "Delete", "End", "PgDn",
+    "Num7", "Num8", "Num9", "Num+", "CapsLock", "A",
+    "S", "D", "F", "G", "H", "J",
+    "K", "L", "L", "'", "Enter", "Num4",
+    "Num5", "Num6", "LShift", "Z", "X", "C",
+    "V", "B", "N", "M", ",", ".",
+    "/", "RShift", "Up", "Num1", "Num2", "Num3",
+    "LCtrl", "LWin", "LAlt", "Space", "RAlt", "FN",
+    "App", "RCtrl", "Left", "Down", "Right", "Num0",
+    "Num .", "Enter", "Mute", "Calc", "Menu", "Media",
+};
+
+static const unsigned int k668_matrix_map[6][22] =
+{
+    {    0, NA_,   12,   18,   24,   30,   36,   42,   48,   54, NA_,   60,   66,   72,   78,   84,   90,   96,  102,  108,  114,  120 },
+    {    1,    7,   13,   19,   25,   31,   37,   43,   49,   55,   61,   67,   73,   79, NA_,   85,   91,   97,  103,  109,  115,  121 },
+    {    2,    8,   14,   20,   26,   32,   38,   44,   50,   56,   62,   68,   74,   80, NA_,   86,   92,   98,  104,  110,  116,  122 },
+    {    3, NA_,    9,   15,   21,   27,   33,   39,   45,   51,   57,   63,   69,   81, NA_, NA_, NA_, NA_,  105,  111,  117,  124 },
+    {    4, NA_,   10,   16,   22,   28,   34,   40,   46,   52,   58,   64,   82, NA_, NA_, NA_,   94, NA_,  106,  112,  118, NA_ },
+    {    5,   11,   17, NA_,   35, NA_, NA_, NA_, NA_, NA_,   53,   59,   65, NA_,   83,   89,   95,  101,  107, NA_,  119, NA_ },
+};
+
 /**------------------------------------------------------------------*\
     @name Sinowealth Keyboard
     @category Keyboard
@@ -418,23 +456,48 @@ void RGBController_SinowealthKeyboard::SetupZones()
     \*---------------------------------------------------------*/
     zone new_zone;
 
+    bool k668 = controller->GetK668Layout();
+
     new_zone.name                   = ZONE_EN_KEYBOARD;
     new_zone.type                   = ZONE_TYPE_MATRIX;
-    new_zone.leds_min               = 86;
-    new_zone.leds_max               = 86;
-    new_zone.leds_count             = 86;
-    new_zone.matrix_map.Set(6, 17, (unsigned int *)&tkl_matrix_map);
+
+    if(k668)
+    {
+        new_zone.leds_min               = 108;
+        new_zone.leds_max               = 108;
+        new_zone.leds_count             = 108;
+        new_zone.matrix_map.Set(6, 22, (unsigned int *)&k668_matrix_map);
+    }
+    else
+    {
+        new_zone.leds_min               = 86;
+        new_zone.leds_max               = 86;
+        new_zone.leds_count             = 86;
+        new_zone.matrix_map.Set(6, 17, (unsigned int *)&tkl_matrix_map);
+    }
 
     zones.push_back(new_zone);
 
     /*---------------------------------------------------------*\
     | Set up LEDs                                               |
     \*---------------------------------------------------------*/
-    for(unsigned int led_idx = 0; led_idx < 86; led_idx++)
+    if(k668)
     {
-        led new_led;
-        new_led.name = led_names_tkl[led_idx];
-        leds.push_back(new_led);
+        for(unsigned int led_idx = 0; led_idx < 108; led_idx++)
+        {
+            led new_led;
+            new_led.name = k668_led_names[led_idx];
+            leds.push_back(new_led);
+        }
+    }
+    else
+    {
+        for(unsigned int led_idx = 0; led_idx < 86; led_idx++)
+        {
+            led new_led;
+            new_led.name = led_names_tkl[led_idx];
+            leds.push_back(new_led);
+        }
     }
 
     SetupColors();

@@ -27,6 +27,7 @@
 #include "RGBController_SinowealthGMOW.h"
 #include "RGBController_GenesisXenon200.h"
 #include <hidapi.h>
+#include <cstring>
 #include "LogManager.h"
 
 #define SINOWEALTH_VID                      0x258A
@@ -44,6 +45,7 @@
 #define GENESIS_THOR_300_PID                0x0090
 #define GENESIS_XENON_200_PID               0x1007
 #define RGB_KEYBOARD_010CPID                0x010C
+#define RGB_KEYBOARD_K668_PID               0x0049
 
 #define MAX_EXPECTED_REPORT_SIZE 2048
 
@@ -416,6 +418,55 @@ DetectedControllers DetectSinowealthKeyboard10c(hid_device_info* info, const std
     return(detected_controllers);
 }
 
+DetectedControllers DetectSinowealthK668(hid_device_info* info, const std::string& name)
+{
+    DetectedControllers detected_controllers;
+
+    /*-----------------------------------------------------*\
+    | The K668WBO-RGB exposes its vendor feature interface  |
+    | as several collections on usage page 0xFF00, which    |
+    | hidapi enumerates as duplicate entries for the same   |
+    | hidraw path.  DetectUsages de-duplicates them so only |
+    | one controller is created.                            |
+    \*-----------------------------------------------------*/
+    unsigned char command[6] = { 0x05, 0x83, 0xB6, 0x00, 0x00, 0x00 };
+    expected_reports reports{ expected_report(0x06, 1032, command, sizeof(command)) };
+
+    if(DetectUsages(info, name, 4, reports))
+    {
+        hid_device*    dev  = reports.at(0).device;
+        unsigned char* resp = reports.at(0).response;
+
+        bool handshake_ok = false;
+
+        if((dev != nullptr) && (resp != nullptr) && (resp[1] == 0x83) && (resp[2] == 0xB6))
+        {
+            for(int idx = 3; idx < 24; idx++)
+            {
+                if((resp[idx] == 0x5A) && (resp[idx + 1] == 0xA5))
+                {
+                    handshake_ok = true;
+                    break;
+                }
+            }
+        }
+
+        if(handshake_ok)
+        {
+            SinowealthKeyboardController*     controller     = new SinowealthKeyboardController(dev, std::string(info->path), name, true);
+            RGBController_SinowealthKeyboard* rgb_controller = new RGBController_SinowealthKeyboard(controller);
+
+            detected_controllers.push_back(rgb_controller);
+        }
+        else if(dev != nullptr)
+        {
+            hid_close(dev);
+        }
+    }
+
+    return detected_controllers;
+}
+
 REGISTER_HID_DETECTOR_P("Glorious Model O / O-",            DetectSinowealthMouse,              SINOWEALTH_VID, Glorious_Model_O_PID,                   0xFF00          );
 REGISTER_HID_DETECTOR_P("Glorious Model D / D-",            DetectSinowealthMouse,              SINOWEALTH_VID, Glorious_Model_D_PID,                   0xFF00          );
 REGISTER_HID_DETECTOR_P("Everest GT-100 RGB",               DetectSinowealthMouse,              SINOWEALTH_VID, Everest_GT100_PID,                      0xFF00          );
@@ -427,6 +478,7 @@ REGISTER_HID_DETECTOR_PU("Glorious Model D / D- Wireless",  DetectGMOW_Cable,   
 REGISTER_HID_DETECTOR_PU("Genesis Xenon 200",               DetectGenesisXenon200,              SINOWEALTH_VID, GENESIS_XENON_200_PID,                  0xFF00, 1       );
 REGISTER_HID_DETECTOR_IPU("Genesis Thor 300",               DetectSinowealthGenesisKeyboard,    SINOWEALTH_VID, GENESIS_THOR_300_PID,               1,  0xFF00, 1       );
 REGISTER_HID_DETECTOR_IPU("Sinowealth Keyboard",            DetectSinowealthKeyboard10c,        SINOWEALTH_VID, RGB_KEYBOARD_010CPID,               1,  0xFF00, 1       );
+REGISTER_HID_DETECTOR_IP("Redragon K668WBO-RGB",            DetectSinowealthK668,               SINOWEALTH_VID, RGB_KEYBOARD_K668_PID,              1,  0xFF00          );
 
 // Sinowealth keyboards are disabled due to VID/PID pairs being reused from Redragon keyboards, which ended up in bricking the latter
 //REGISTER_HID_DETECTOR_P("FL ESPORTS F11",                   DetectSinowealthKeyboard,   SINOWEALTH_VID, Fl_Esports_F11_PID,                             0xFF00          );

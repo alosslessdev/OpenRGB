@@ -62,7 +62,10 @@ class SinowealthKeyboardController
 {
 public:
     SinowealthKeyboardController(hid_device* dev_cmd_handle, hid_device* dev_data_handle, char *_path, std::string dev_name); //RGB, Command, path
+    SinowealthKeyboardController(hid_device* dev_handle, std::string _path, std::string dev_name, bool _k668_layout); // single-handle variant for Redragon K668WBO-RGB
     ~SinowealthKeyboardController();
+
+    bool            GetK668Layout();
 
     unsigned int    GetLEDCount();
     std::string     GetLocation();
@@ -85,4 +88,6 @@ private:
     unsigned char   current_speed;
     std::string     location;
     std::string     name;
+    bool            k668_layout;
+    bool            single_handle;
 };

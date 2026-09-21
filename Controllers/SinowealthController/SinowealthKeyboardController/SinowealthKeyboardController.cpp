@@ -40,6 +40,20 @@ static unsigned char tkl_keys_per_key_index[]               = { 0x08, 0x0A, 0x0B
                                                                 0x60, 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68, 0x6A, 0x6B,
                                                                 0x71, 0x72, 0x73, 0x76, 0x79, 0x7A, 0x7B, 0x7F, 0x80, 0x81 };
 
+/*-------------------------------------------------------------------------------------------------*\
+| Redragon K668WBO-RGB (Sinowealth, VID 0x258A / PID 0x0049, 108 keys)                              |
+|                                                                                                   |
+| Per-key LED indices reverse engineered from the vendor driver (KeyboardDrv.exe, K668WBO-RGB      |
+| V1.6.6).  Each entry is the LED position used inside the 1024-byte per-key colour buffer of the   |
+| direct/USB-write packet; colour triples are interleaved B,G,R at index*3.                         |
+\*-------------------------------------------------------------------------------------------------*/
+static unsigned int k668_keys_per_key_index[]               = {   0,  12,  18,  24,  30,  36,  42,  48,  54,  60,  66,  72,  78,  84,  90,  96,   1,   7,
+                                                                 13,  19,  25,  31,  37,  43,  49,  55,  61,  67,  73,  79,  85,  91,  97, 103, 109, 115,
+                                                                121,   2,   8,  14,  20,  26,  32,  38,  44,  50,  56,  62,  68,  74,  80,  86,  92,  98,
+                                                                104, 110, 116, 122,   3,   9,  15,  21,  27,  33,  39,  45,  51,  57,  63,  69,  81, 105,
+                                                                111, 117,   4,  10,  16,  22,  28,  34,  40,  46,  52,  58,  64,  82,  94, 106, 112, 118,
+                                                                  5,  11,  17,  35,  53,  59,  65,  83,  89,  95, 101, 107, 119, 124, 102, 108, 114, 120 };
+
 static unsigned int keys_tkl_keys_indices_static_command[]  = { 0x0022, 0x0024, 0x0026, 0x0027, 0x0029, 0x002B, 0x002D, 0x002E, 0x002F,
                                                                 0x0030, 0x0031, 0x0032, 0x0037, 0x0039, 0x003B, 0x003C, 0x003E,
                                                                 0x0040, 0x0042, 0x0043, 0x0044, 0x0045, 0x0046, 0x0047, 0x004C, 0x004E,
@@ -83,12 +97,44 @@ SinowealthKeyboardController::SinowealthKeyboardController(hid_device* dev_cmd_h
     current_speed   = SPEED_NORMAL;
 
     location        = path;
+
+    k668_layout     = false;
+    single_handle   = false;
+}
+
+SinowealthKeyboardController::SinowealthKeyboardController(hid_device* dev_handle, std::string _path, std::string dev_name, bool _k668_layout)
+{
+    dev_cmd         = dev_handle;
+    dev_data        = dev_handle;
+    name            = dev_name;
+
+    led_count       = sizeof(k668_keys_per_key_index) / sizeof(*k668_keys_per_key_index);
+
+    current_mode    = MODE_STATIC;
+    current_speed   = SPEED_NORMAL;
+
+    location        = _path;
+
+    k668_layout     = _k668_layout;
+    single_handle   = true;
 }
 
 SinowealthKeyboardController::~SinowealthKeyboardController()
 {
-    hid_close(dev_cmd);
-    hid_close(dev_data);
+    if(single_handle)
+    {
+        hid_close(dev_data);
+    }
+    else
+    {
+        hid_close(dev_cmd);
+        hid_close(dev_data);
+    }
+}
+
+bool SinowealthKeyboardController::GetK668Layout()
+{
+    return(k668_layout);
 }
 
 std::string SinowealthKeyboardController::GetLocation()
@@ -108,6 +154,11 @@ unsigned char SinowealthKeyboardController::GetCurrentMode()
 
 unsigned int SinowealthKeyboardController::GetLEDCount()
 {
+    if(k668_layout)
+    {
+        return(sizeof(k668_keys_per_key_index) / sizeof(*k668_keys_per_key_index));
+    }
+
     return(sizeof(tkl_keys_per_key_index) / sizeof(*tkl_keys_per_key_index));
 }
 
@@ -129,12 +180,47 @@ void SinowealthKeyboardController::SetLEDsDirect(std::vector<RGBColor> colors)
     const int buffer_size = 1032;
 
     unsigned char buf[buffer_size];
-    unsigned int num_keys = sizeof(tkl_keys_per_key_index) / sizeof(*tkl_keys_per_key_index);
 
     /*-----------------------------------------------------*\
     | Zero out buffer                                       |
     \*-----------------------------------------------------*/
     memset(buf, 0x00, sizeof(buf));
+
+    if(k668_layout)
+    {
+        unsigned int num_keys = sizeof(k668_keys_per_key_index) / sizeof(*k668_keys_per_key_index);
+
+        /*-------------------------------------------------*\
+        | Redragon K668WBO-RGB direct packet:                |
+        |   [0]=report id 0x06                               |
+        |   [1]=opcode 0x04, [2]=KeyAddr 0xD4, [4]=0x40       |
+        |   per-key colour data at [8 + led*3] as B,G,R      |
+        \*-------------------------------------------------*/
+        buf[0x00] = 0x06;
+        buf[0x01] = 0x04;
+        buf[0x02] = 0xD4;
+        buf[0x03] = 0x00;
+        buf[0x04] = 0x40;
+
+        if(colors.size() < num_keys)
+        {
+            num_keys = colors.size();
+        }
+
+        for(unsigned int i = 0; i < num_keys; i++)
+        {
+            unsigned int base = 8 + (k668_keys_per_key_index[i] * 3);
+
+            buf[base + 0] = RGBGetBValue(colors[i]);
+            buf[base + 1] = RGBGetGValue(colors[i]);
+            buf[base + 2] = RGBGetRValue(colors[i]);
+        }
+
+        hid_send_feature_report(dev_data, buf, sizeof(buf));
+        return;
+    }
+
+    unsigned int num_keys = sizeof(tkl_keys_per_key_index) / sizeof(*tkl_keys_per_key_index);
 
     /*-----------------------------------------------------*\
     | Set up Direct packet                                  |
@@ -168,6 +254,13 @@ void SinowealthKeyboardController::SetLEDsDirect(std::vector<RGBColor> colors)
 
 void SinowealthKeyboardController::SetStaticColor(RGBColor* color_buf)
 {
+    if(k668_layout)
+    {
+        std::vector<RGBColor> colors(led_count, color_buf[0]);
+        SetLEDsDirect(colors);
+        return;
+    }
+
     const int buffer_size = 1032;
 
     unsigned char usb_buf[buffer_size];
